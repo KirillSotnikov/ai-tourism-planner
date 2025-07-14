@@ -1,0 +1,45 @@
+{
+  "name": "ai-tourism-planner-server",
+  "version": "1.0.0",
+  "description": "A Node.js backend service that generates personalized travel itineraries using OpenAI's GPT-3.5-turbo model",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "echo \"Linting not configured yet\" && exit 0"
+  },
+  "keywords": [
+    "ai",
+    "tourism",
+    "travel",
+    "planner",
+    "openai",
+    "gpt",
+    "itinerary",
+    "streaming",
+    "sse"
+  ],
+  "author": "Kyrylo Sotnykov",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KirillSotnikov/ai-tourism-planner.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KirillSotnikov/ai-tourism-planner/issues"
+  },
+  "homepage": "https://github.com/KirillSotnikov/ai-tourism-planner#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "openai": "^5.9.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}
