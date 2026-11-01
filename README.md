@@ -8,7 +8,8 @@ A Node.js backend service that generates personalized travel itineraries using O
 - **Real-time Streaming**: Server-Sent Events (SSE) for live response streaming
 - **Customizable Parameters**: Location, duration, pace, and interests
 - **Input Validation**: Rejects malformed or oversized requests before they reach OpenAI
-- **Rate Limiting**: Per-IP request limit to protect your OpenAI budget
+- **Rate Limiting**: Per-IP request limit, one generation at a time per IP, and a global daily cap
+- **Abuse Visibility**: One JSON log line per request, plus an IP block list
 - **Cost Controls**: Optional reasoning effort setting for reasoning models
 - **Docker Support**: Containerized deployment ready
 - **CORS Support**: Configurable cross-origin resource sharing
@@ -102,10 +103,17 @@ The decoded text has one paragraph per day, each starting with `Day N:`.
 { "error": "days must be an integer between 1 and 7" }
 ```
 
-**`429 Too Many Requests`**: rate limit exceeded. The `Retry-After` header gives the seconds until the limit resets:
+**`429 Too Many Requests`**: rate limit exceeded (the `Retry-After` header gives the seconds until the limit resets), or this IP already has a generation in progress:
 ```json
 { "error": "Too many requests. Please try again later." }
 ```
+
+**`503 Service Unavailable`**: the global daily limit (`DAILY_REQUEST_LIMIT`) has been reached:
+```json
+{ "error": "The planner has reached its daily limit. Please try again tomorrow." }
+```
+
+**`403 Forbidden`**: the client IP is in `BLOCKED_IPS`.
 
 Every response from this endpoint includes `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers.
 
@@ -206,7 +214,10 @@ The server sends `X-Accel-Buffering: no`, so nginx streams responses instead of 
 | `CORS_ALLOWED_ORIGIN` | Required | Allowed CORS origin (your frontend URL) |
 | `RATE_LIMIT_MAX` | `10` | Max requests per IP per window |
 | `RATE_LIMIT_WINDOW_MS` | `3600000` (1 hour) | Rate limit window length in milliseconds |
-| `TRUST_PROXY` | Not set | Set to `1` when behind one reverse proxy so client IPs are detected correctly |
+| `TRUST_PROXY` | Not set | Set to `1` when behind one reverse proxy so client IPs are detected correctly. Don't set it if clients reach Node directly: they could fake their IP via `X-Forwarded-For` |
+| `DAILY_REQUEST_LIMIT` | `300` | Max OpenAI calls per day across all users (resets 00:00 UTC) |
+| `MAX_OUTPUT_TOKENS` | `5000` | Max tokens generated per request, including hidden reasoning tokens |
+| `BLOCKED_IPS` | Not set | Comma-separated client IPs to reject with `403` |
 
 ### Example .env file
 
@@ -218,6 +229,9 @@ PORT=8080
 CORS_ALLOWED_ORIGIN=http://localhost:3000
 RATE_LIMIT_MAX=10
 RATE_LIMIT_WINDOW_MS=3600000
+DAILY_REQUEST_LIMIT=300
+MAX_OUTPUT_TOKENS=5000
+# BLOCKED_IPS=203.0.113.5
 # TRUST_PROXY=1
 ```
 
@@ -230,12 +244,17 @@ The model is set with `OPENAI_MODEL`, so switching is a config change and a rest
 | `gpt-6-luna` (default) | $0.10 / $0.50 | Cheapest current-generation model; good fit for short itineraries |
 | `gpt-6.1-terra` | $1.00 / $5.00 | If `gpt-6-luna` output quality isn't good enough |
 
-A typical itinerary uses roughly 350 input and 800 output tokens, which is about $0.0004 per plan with `gpt-6-luna`.
+A typical itinerary uses roughly 1,000 input and 1,500–2,500 output tokens (including hidden reasoning), which is about $0.001 per plan with `gpt-6-luna`.
 
 Prices are as of October 2026. OpenAI retires models regularly (for example `gpt-3.5-turbo`, `gpt-5-mini` and `gpt-5-nano`), so check the [deprecations page](https://developers.openai.com/api/docs/deprecations) before picking a model.
 
 ## 💰 Cost Protection
 
+- **Daily cap**: `DAILY_REQUEST_LIMIT` limits OpenAI calls per day across all users, so it still holds when an abuser rotates IPs. With `gpt-6-luna`, 300 calls is roughly $0.30/day.
+- **One generation per IP**: a second request from the same IP while one is streaming gets `429`.
+- **Stop on disconnect**: if the client disconnects, the OpenAI stream is cancelled so you don't pay for unread tokens.
+- **Output cap**: `MAX_OUTPUT_TOKENS` limits the cost of a single request.
+- **Request logs**: every request writes a JSON line with time, IP, origin, user agent and outcome (`accepted`, `invalid`, `rate_limited`, `concurrent_rejected`, `daily_limit_reached`, `client_disconnected`). Use them to find abusers and add their IPs to `BLOCKED_IPS`.
 - **Rate limiting**: in-memory, per IP, fixed window. Rejected requests also count toward the limit. Counts reset when the server restarts and aren't shared between instances; use a shared store such as Redis if you run several replicas.
 - **Input validation**: invalid requests are rejected with `400` before any OpenAI call. Request bodies are capped at 10 KB.
 - **Prompt structure**: fixed instructions are in the system prompt; the user message only contains the trip details.
