@@ -1,7 +1,7 @@
 {
   "name": "ai-tourism-planner-server",
   "version": "1.0.0",
-  "description": "A Node.js backend service that generates personalized travel itineraries using OpenAI's GPT-3.5-turbo model",
+  "description": "A Node.js backend service that generates personalized travel itineraries using OpenAI models",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
